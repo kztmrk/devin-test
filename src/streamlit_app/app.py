@@ -128,6 +128,7 @@ if prompt := st.chat_input("メッセージを入力してください"):
                 st.write(f"Endpoint: {st.session_state.azure_endpoint}")
                 st.write(f"API Version: {st.session_state.azure_api_version}")
                 st.write(f"Deployment: {st.session_state.azure_deployment}")
+                st.write("注意: API Version 2024-10-21以降では応答形式が変更されている場合があります")
             
             client = AzureOpenAI(
                 api_key=st.session_state.azure_api_key,
@@ -145,7 +146,7 @@ if prompt := st.chat_input("メッセージを入力してください"):
             )
 
             for chunk in stream:
-                if chunk.choices[0].delta.content is not None:
+                if chunk.choices and len(chunk.choices) > 0 and chunk.choices[0].delta and chunk.choices[0].delta.content is not None:
                     content = chunk.choices[0].delta.content
                     full_response += content
                     message_placeholder.markdown(full_response + "▌")
@@ -162,6 +163,10 @@ if prompt := st.chat_input("メッセージを入力してください"):
                 st.warning("3. デプロイメント名が正しいことを確認してください")
             elif "not found" in error_msg.lower() or "404" in error_msg:
                 st.warning("リソースが見つかりませんでした。デプロイメント名が正しいことを確認してください")
+            elif "index" in error_msg.lower() and "range" in error_msg.lower():
+                st.warning("API応答の処理中にエラーが発生しました。APIバージョンに互換性の問題がある可能性があります。")
+                st.warning(f"現在のAPIバージョン: {st.session_state.azure_api_version}")
+                st.warning("推奨APIバージョン: 2023-05-15")
             
             full_response = (
                 "申し訳ありません、エラーが発生しました。もう一度お試しください。"
