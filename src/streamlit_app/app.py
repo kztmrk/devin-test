@@ -1,5 +1,6 @@
 import os
 import sys
+
 import streamlit as st
 
 sys.path.append(
@@ -9,10 +10,13 @@ from src.streamlit_app.agent.manager import AgentManager  # noqa: E402
 
 try:
     from dotenv import load_dotenv
+
     load_dotenv()
 except ImportError:
+
     def load_dotenv():
         pass
+
     print(
         "Warning: python-dotenv not found. Environment variables will not be loaded from .env file."
     )
@@ -126,6 +130,48 @@ with st.sidebar:
             st.session_state.agent_type = agent_type
             st.rerun()
 
+        if st.session_state.agent_type == "duckduckgo_search":
+            st.subheader("検索設定")
+
+            if "search_enabled" not in st.session_state:
+                st.session_state.search_enabled = True
+
+            if "max_search_results" not in st.session_state:
+                st.session_state.max_search_results = 3
+
+            if "search_region" not in st.session_state:
+                st.session_state.search_region = "jp-ja"
+
+            search_enabled = st.checkbox(
+                "検索機能を有効にする", value=st.session_state.search_enabled
+            )
+            if search_enabled != st.session_state.search_enabled:
+                st.session_state.search_enabled = search_enabled
+
+            max_results = st.slider(
+                "最大検索結果数",
+                min_value=1,
+                max_value=10,
+                value=st.session_state.max_search_results,
+            )
+            if max_results != st.session_state.max_search_results:
+                st.session_state.max_search_results = max_results
+
+            news_search = st.checkbox(
+                "ニュース検索を有効にする", value=st.session_state.get("news_search", True)
+            )
+            if news_search != st.session_state.get("news_search", True):
+                st.session_state.news_search = news_search
+
+            max_refinements = st.slider(
+                "検索クエリ最適化回数",
+                min_value=0,
+                max_value=2,
+                value=st.session_state.get("max_query_refinements", 1),
+            )
+            if max_refinements != st.session_state.get("max_query_refinements", 1):
+                st.session_state.max_query_refinements = max_refinements
+
 st.title("Azure OpenAI ストリーミングチャットボット")
 
 for message in st.session_state.messages:
@@ -168,6 +214,21 @@ if prompt := st.chat_input("メッセージを入力してください"):
                 "azure_endpoint": st.session_state.azure_endpoint,
                 "deployment_name": st.session_state.azure_deployment,
             }
+
+            if st.session_state.agent_type == "duckduckgo_search":
+                agent_config.update(
+                    {
+                        "search_enabled": st.session_state.get("search_enabled", True),
+                        "max_search_results": st.session_state.get(
+                            "max_search_results", 3
+                        ),
+                        "search_region": st.session_state.get("search_region", "jp-ja"),
+                        "news_search": st.session_state.get("news_search", True),
+                        "max_query_refinements": st.session_state.get(
+                            "max_query_refinements", 1
+                        ),
+                    }
+                )
 
             try:
                 st.session_state.agent_manager.initialize_agent(
