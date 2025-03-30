@@ -500,7 +500,7 @@ class DuckDuckGoSearchAgent(BaseAgent):
         if self.should_search(message):
             query = self.generate_search_query(message)
 
-            yield f"🔍 「{query}」を検索中...\n\n"
+            yield f"<search_start>🔍 「{query}」を検索中...</search_start>"
             search_results = self.perform_search(query)
 
             if (
@@ -509,10 +509,12 @@ class DuckDuckGoSearchAgent(BaseAgent):
             ):
                 refined_query = self.refine_search_query(query, search_results)
                 if refined_query and refined_query != query:
-                    yield f"🔍 検索クエリを「{refined_query}」に改善して再検索中...\n\n"
+                    yield f"<search_start>🔍 検索クエリを「{refined_query}」に改善して再検索中...</search_start>"
                     self.state["refined_query"] = refined_query
                     search_results = self.perform_search(refined_query)
 
+            yield "<search_end>"
+            
             if search_results:
                 search_info = self.format_search_results(search_results)
                 yield f"{search_info}\n\n回答を生成中...\n\n"

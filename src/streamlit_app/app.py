@@ -246,10 +246,30 @@ if prompt := st.chat_input("メッセージを入力してください"):
                 ],
             )
 
-            for chunk in stream:
-                full_response += chunk
-                message_placeholder.markdown(full_response + "▌")
+            spinner_placeholder = st.empty()
+            is_searching = False
+            display_response = ""
 
+            for chunk in stream:
+                if "<search_start>" in chunk:
+                    is_searching = True
+                    search_message = chunk.split("<search_start>")[1].split("</search_start>")[0]
+                    with spinner_placeholder.container():
+                        st.spinner(search_message)
+                    chunk = ""
+                
+                elif "<search_end>" in chunk:
+                    is_searching = False
+                    spinner_placeholder.empty()
+                    chunk = chunk.replace("<search_end>", "")
+                
+                full_response += chunk
+                
+                if not is_searching:
+                    display_response = full_response
+                    message_placeholder.markdown(display_response + "▌")
+
+            spinner_placeholder.empty()
             message_placeholder.markdown(full_response)
         except Exception as e:
             error_msg = str(e)
