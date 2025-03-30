@@ -1,10 +1,15 @@
 import os
 
 import streamlit as st
-from dotenv import load_dotenv
-from openai import AzureOpenAI
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    def load_dotenv():
+        pass
+    print("Warning: python-dotenv not found. Environment variables will not be loaded from .env file.")
 
-load_dotenv()
+from openai import AzureOpenAI
 
 st.set_page_config(
     page_title="Azure OpenAI ストリーミングチャットボット",
@@ -84,7 +89,9 @@ if prompt := st.chat_input("メッセージを入力してください"):
         or not st.session_state.azure_endpoint
         or not st.session_state.azure_deployment
     ):
-        st.error("Azure OpenAIの設定が不完全です。サイドバーで必要な情報を入力してください。")
+        st.error(
+            "Azure OpenAIの設定が不完全です。サイドバーで必要な情報を入力してください。"
+        )
         st.stop()
 
     st.session_state.messages.append({"role": "user", "content": prompt})
@@ -121,7 +128,9 @@ if prompt := st.chat_input("メッセージを入力してください"):
             message_placeholder.markdown(full_response)
         except Exception as e:
             st.error(f"エラーが発生しました: {str(e)}")
-            full_response = "申し訳ありません、エラーが発生しました。もう一度お試しください。"
+            full_response = (
+                "申し訳ありません、エラーが発生しました。もう一度お試しください。"
+            )
             message_placeholder.markdown(full_response)
 
         st.session_state.messages.append(
@@ -129,4 +138,6 @@ if prompt := st.chat_input("メッセージを入力してください"):
         )
 
 st.markdown("---")
-st.markdown("このアプリケーションはStreamlitとAzure OpenAI APIを使用しています。APIキーは安全に管理してください。")
+st.markdown(
+    "このアプリケーションはStreamlitとAzure OpenAI APIを使用しています。APIキーは安全に管理してください。"
+)
