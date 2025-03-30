@@ -1,10 +1,10 @@
 import os
 import sys
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from src.streamlit_app.agent.factory import AgentFactory
 from dotenv import load_dotenv
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from src.streamlit_app.agent.factory import AgentFactory
 
 load_dotenv()
 

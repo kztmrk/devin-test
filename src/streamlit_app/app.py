@@ -1,24 +1,19 @@
 import os
+import sys
 
 import streamlit as st
 
 try:
     from dotenv import load_dotenv
-
     load_dotenv()
 except ImportError:
-
     def load_dotenv():
         pass
-
     print(
         "Warning: python-dotenv not found. Environment variables will not be loaded from .env file."
     )
 
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from src.streamlit_app.agent.manager import AgentManager
+from .agent.manager import AgentManager
 
 st.set_page_config(
     page_title="Azure OpenAI ストリーミングチャットボット",
