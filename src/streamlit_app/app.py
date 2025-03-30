@@ -13,7 +13,8 @@ except ImportError:
         "Warning: python-dotenv not found. Environment variables will not be loaded from .env file."
     )
 
-from .agent.manager import AgentManager
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from src.streamlit_app.agent.manager import AgentManager
 
 st.set_page_config(
     page_title="Azure OpenAI ストリーミングチャットボット",
