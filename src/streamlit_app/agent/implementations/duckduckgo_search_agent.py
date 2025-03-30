@@ -47,6 +47,17 @@ class SourceClassification(BaseModel):
     reason: str = Field(description="分類の理由")
 
 
+class SourceCitation(BaseModel):
+    """情報ソースの引用情報を管理するためのモデル"""
+
+    source_id: int = Field(description="引用ソースの識別番号（例：[1], [2]）")
+    title: str = Field(description="引用元のタイトル")
+    url: str = Field(description="引用元のURL")
+    date: Optional[str] = Field(description="公開日時（わかれば）", default=None)
+    source_type: str = Field(description="情報ソースの種類（一次情報/二次情報/不明）", default="不明")
+    excerpt: str = Field(description="引用する情報の抜粋", default="")
+
+
 class DuckDuckGoSearchAgent(BaseAgent):
     """
     An implementation of BaseAgent that uses DuckDuckGo search to enhance responses.
@@ -79,6 +90,8 @@ class DuckDuckGoSearchAgent(BaseAgent):
 3. 複数の情報源が一致する情報はより信頼できる可能性があります
 
 回答では、使用した情報の信頼性について言及し、ユーザーが情報の質を判断できるようにしてください。
+また、情報源を引用する際は[1]、[2]のように番号を付けて、どの情報がどの情報源から得られたかを明確にしてください。
+回答の最後に「引用文献」セクションを設け、使用した情報源のタイトル、URL、公開日時を列挙してください。
 """
 
         if "search_enabled" not in self.config:
@@ -98,6 +111,14 @@ class DuckDuckGoSearchAgent(BaseAgent):
 
         if "use_structured_output" not in self.config:
             self.config["use_structured_output"] = True
+
+        if "citation_format" not in self.config:
+            self.config[
+                "citation_format"
+            ] = "numbered"  # 'numbered', 'footnote', 'inline'のいずれか
+
+        if "include_citations_section" not in self.config:
+            self.config["include_citations_section"] = True
 
         self.ddgs = DDGS()
         self.state["last_search_query"] = None
@@ -566,7 +587,68 @@ class DuckDuckGoSearchAgent(BaseAgent):
 
             formatted += f"   🔗 出典: {result['href']}\n\n"
 
+        citations = self.generate_citations(results)
+        formatted += "\n引用形式:\n"
+        for citation in citations:
+            formatted += f"[{citation.source_id}] {citation.title}. "
+            if citation.date:
+                formatted += f"({citation.date}). "
+            formatted += f"{citation.url}\n"
+
         return formatted
+
+    def generate_citations(
+        self, search_results: List[Dict[str, str]]
+    ) -> List[SourceCitation]:
+        """
+        検索結果から引用情報を生成します。
+
+        Args:
+            search_results: 検索結果のリスト
+
+        Returns:
+            引用情報のリスト
+        """
+        citations = []
+
+        for i, result in enumerate(search_results, 1):
+            citation = SourceCitation(
+                source_id=i,
+                title=result.get("title", ""),
+                url=result.get("href", ""),
+                date=result.get("date", None),
+                source_type=result.get("source_type", "不明"),
+                excerpt=result.get("body", "")[:150] + "..."
+                if len(result.get("body", "")) > 150
+                else result.get("body", ""),
+            )
+            citations.append(citation)
+
+        return citations
+
+    def format_citation_instructions(self, citations: List[SourceCitation]) -> str:
+        """
+        引用情報から引用指示文を生成します。
+
+        Args:
+            citations: 引用情報のリスト
+
+        Returns:
+            引用指示文
+        """
+        citation_instruction = """
+検索結果の情報を引用する場合は、[1]、[2]のようにソース番号を文中に含めてください。
+回答の最後に「引用文献」セクションを設け、以下の形式で情報源を列挙してください:
+
+引用文献:
+"""
+        for citation in citations:
+            citation_instruction += f"[{citation.source_id}] {citation.title}"
+            if citation.date:
+                citation_instruction += f" ({citation.date})"
+            citation_instruction += f". {citation.url}\n"
+
+        return citation_instruction
 
     def process_message(
         self, message: str, context: Optional[List[Dict[str, str]]] = None
@@ -586,6 +668,36 @@ class DuckDuckGoSearchAgent(BaseAgent):
             raise ValueError(
                 "Azure OpenAI client is not initialized. Please check your configuration."
             )
+
+        if message.lower().startswith(("source:", "ソース:", "出典:", "引用:")):
+            source_generator = self.handle_source_command(message)
+            response_dict = None
+
+            for chunk in source_generator:
+                yield chunk
+
+            try:
+                response_dict = source_generator.send(None)
+            except StopIteration as e:
+                if hasattr(e, "value") and isinstance(e.value, dict):
+                    response_dict = e.value
+                else:
+                    response_dict = {
+                        "response": "ソース情報の処理中にエラーが発生しました。",
+                        "error": "無効な応答形式",
+                        "timestamp": time.time(),
+                    }
+
+            if not isinstance(response_dict, dict):
+                response_dict = {
+                    "response": str(response_dict)
+                    if response_dict
+                    else "ソース情報の処理中にエラーが発生しました。",
+                    "error": "無効な応答形式",
+                    "timestamp": time.time(),
+                }
+
+            return response_dict
 
         search_results = []
         search_info = ""
@@ -619,9 +731,12 @@ class DuckDuckGoSearchAgent(BaseAgent):
         )
 
         if search_results:
-            system_message += (
-                f"\n\n以下の検索結果を参考にして回答してください。検索結果が質問に関連しない場合は無視してください。\n\n{search_info}"
-            )
+            citations = self.generate_citations(search_results)
+            self.state["citations"] = citations
+
+            citation_instruction = self.format_citation_instructions(citations)
+
+            system_message += f"\n\n以下の検索結果を参考にして回答してください。検索結果が質問に関連しない場合は無視してください。\n\n{search_info}\n\n{citation_instruction}"
 
         messages.append({"role": "system", "content": system_message})
 
@@ -707,9 +822,12 @@ class DuckDuckGoSearchAgent(BaseAgent):
         )
 
         if search_results:
-            system_message += (
-                f"\n\n以下の検索結果を参考にして回答してください。検索結果が質問に関連しない場合は無視してください。\n\n{search_info}"
-            )
+            citations = self.generate_citations(search_results)
+            self.state["citations"] = citations
+
+            citation_instruction = self.format_citation_instructions(citations)
+
+            system_message += f"\n\n以下の検索結果を参考にして回答してください。検索結果が質問に関連しない場合は無視してください。\n\n{search_info}\n\n{citation_instruction}"
 
         messages.append({"role": "system", "content": system_message})
 
@@ -753,6 +871,116 @@ class DuckDuckGoSearchAgent(BaseAgent):
                 "timestamp": time.time(),
             }
 
+    def extract_source_content(self, source_id: int) -> Optional[Dict[str, Any]]:
+        """
+        指定されたソースIDの情報を抽出・展開します。
+
+        Args:
+            source_id: 抽出するソースのID
+
+        Returns:
+            ソースの詳細情報を含む辞書、見つからない場合はNone
+        """
+        if not self.state.get("last_search_results"):
+            return None
+
+        search_results = self.state.get("last_search_results")
+
+        if not search_results or source_id <= 0 or source_id > len(search_results):
+            return None
+
+        result = search_results[source_id - 1]
+
+        extracted_info = {
+            "title": result.get("title", ""),
+            "full_content": result.get("body", ""),
+            "url": result.get("href", ""),
+            "date": result.get("date", None),
+            "source_type": result.get("source_type", "不明"),
+            "source_id": source_id,
+        }
+
+        prompt = f"""
+        以下の情報源から主要なポイントを抽出し、内容を要約してください：
+        
+        タイトル: {extracted_info["title"]}
+        内容: {extracted_info["full_content"]}
+        """
+
+        try:
+            key_points_analysis = self._ask_llm(prompt)
+            extracted_info["key_points"] = key_points_analysis
+        except Exception as e:
+            extracted_info["key_points"] = "コンテンツ分析中にエラーが発生しました。"
+
+        return extracted_info
+
+    def handle_source_command(
+        self, message: str
+    ) -> Generator[str, None, Dict[str, Any]]:
+        """
+        ソース展開コマンドを処理します。
+
+        Args:
+            message: ユーザーメッセージ (例: "source:1" or "ソース:2")
+
+        Returns:
+            展開されたソース情報を含むジェネレーター
+        """
+        try:
+            if message.lower().startswith(("source:", "ソース:", "出典:", "引用:")):
+                source_id_str = message.split(":", 1)[1].strip()
+                try:
+                    source_id = int(source_id_str)
+                except ValueError:
+                    yield f"エラー: 有効なソースIDを指定してください。例: ソース:1"
+                    return {
+                        "response": "エラー: 有効なソースIDを指定してください。",
+                        "error": "無効なソースID",
+                        "timestamp": time.time(),
+                    }
+
+                source_info = self.extract_source_content(source_id)
+
+                if not source_info:
+                    yield f"エラー: ソースID {source_id} が見つかりません。"
+                    return {
+                        "response": f"エラー: ソースID {source_id} が見つかりません。",
+                        "error": "ソースが見つかりません",
+                        "timestamp": time.time(),
+                    }
+
+                response = f"# ソース {source_id}: {source_info['title']}\n\n"
+                response += f"**URL**: {source_info['url']}\n"
+                if source_info.get("date"):
+                    response += f"**公開日**: {source_info['date']}\n"
+                response += f"**情報の種類**: {source_info['source_type']}\n\n"
+                response += f"## 内容\n{source_info['full_content']}\n\n"
+                response += f"## 主要ポイント\n{source_info['key_points']}\n"
+
+                yield response
+
+                return {
+                    "response": response,
+                    "source_info": source_info,
+                    "timestamp": time.time(),
+                }
+
+            return {
+                "response": "",
+                "is_source_command": False,
+                "timestamp": time.time(),
+            }
+
+        except Exception as e:
+            error_message = f"ソース展開中にエラーが発生しました: {str(e)}"
+            yield error_message
+            return {
+                "response": error_message,
+                "error": str(e),
+                "timestamp": time.time(),
+            }
+
     def get_capabilities(self) -> List[str]:
         """
         Get a list of the agent's capabilities.
@@ -766,4 +994,6 @@ class DuckDuckGoSearchAgent(BaseAgent):
             "conversation_context",
             "external_search",
             "real_time_information",
+            "source_citation",
+            "source_content_extraction",
         ]
