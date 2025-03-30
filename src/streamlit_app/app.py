@@ -172,6 +172,15 @@ with st.sidebar:
             if max_refinements != st.session_state.get("max_query_refinements", 1):
                 st.session_state.max_query_refinements = max_refinements
 
+            use_structured_output = st.checkbox(
+                "構造化出力を使用する（一部のモデルでは非対応）",
+                value=st.session_state.get("use_structured_output", True),
+            )
+            if use_structured_output != st.session_state.get(
+                "use_structured_output", True
+            ):
+                st.session_state.use_structured_output = use_structured_output
+
 st.title("Azure OpenAI ストリーミングチャットボット")
 
 for message in st.session_state.messages:
@@ -227,6 +236,9 @@ if prompt := st.chat_input("メッセージを入力してください"):
                         "max_query_refinements": st.session_state.get(
                             "max_query_refinements", 1
                         ),
+                        "use_structured_output": st.session_state.get(
+                            "use_structured_output", True
+                        ),
                     }
                 )
 
@@ -253,18 +265,20 @@ if prompt := st.chat_input("メッセージを入力してください"):
             for chunk in stream:
                 if "<search_start>" in chunk:
                     is_searching = True
-                    search_message = chunk.split("<search_start>")[1].split("</search_start>")[0]
+                    search_message = chunk.split("<search_start>")[1].split(
+                        "</search_start>"
+                    )[0]
                     with spinner_placeholder.container():
                         st.spinner(search_message)
                     chunk = ""
-                
+
                 elif "<search_end>" in chunk:
                     is_searching = False
                     spinner_placeholder.empty()
                     chunk = chunk.replace("<search_end>", "")
-                
+
                 full_response += chunk
-                
+
                 if not is_searching:
                     display_response = full_response
                     message_placeholder.markdown(display_response + "▌")

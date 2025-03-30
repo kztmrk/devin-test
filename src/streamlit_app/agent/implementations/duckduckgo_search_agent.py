@@ -96,6 +96,9 @@ class DuckDuckGoSearchAgent(BaseAgent):
         if "max_query_refinements" not in self.config:
             self.config["max_query_refinements"] = 1
 
+        if "use_structured_output" not in self.config:
+            self.config["use_structured_output"] = True
+
         self.ddgs = DDGS()
         self.state["last_search_query"] = None
         self.state["last_search_results"] = None
@@ -136,6 +139,7 @@ class DuckDuckGoSearchAgent(BaseAgent):
     ) -> dict:
         """
         Azure OpenAI APIを使用して構造化出力を返すプロンプトに対する回答を取得します。
+        構造化出力をサポートしていないモデルの場合は、通常のプロンプトにスキーマ情報を含めて実行します。
 
         Args:
             prompt: 質問やタスクを含むプロンプト
@@ -150,6 +154,11 @@ class DuckDuckGoSearchAgent(BaseAgent):
                 "Azure OpenAI client is not initialized. Please check your configuration."
             )
 
+        if not self.config.get("use_structured_output", True):
+            return self._ask_llm_with_structured_output_fallback(
+                prompt, json_schema, temperature
+            )
+
         try:
             messages = [{"role": "user", "content": prompt}]
             response = self.client.chat.completions.create(
@@ -162,8 +171,92 @@ class DuckDuckGoSearchAgent(BaseAgent):
 
             return json.loads(response.choices[0].message.content)
         except Exception as e:
-            print(f"Error calling Azure OpenAI API with structured output: {str(e)}")
+            error_str = str(e)
+            if (
+                "response_format.schema" in error_str
+                and "unknown_parameter" in error_str
+            ):
+                print(
+                    f"モデル {self.config['deployment_name']} は構造化出力をサポートしていません。フォールバック方式を使用します。"
+                )
+                self.config["use_structured_output"] = False
+                return self._ask_llm_with_structured_output_fallback(
+                    prompt, json_schema, temperature
+                )
+
+            print(f"Error calling Azure OpenAI API with structured output: {error_str}")
             return {}
+
+    def _ask_llm_with_structured_output_fallback(
+        self, prompt: str, json_schema: dict, temperature: float = 0.0
+    ) -> dict:
+        """
+        構造化出力をサポートしていないモデル用のフォールバック実装。
+        スキーマの情報をプロンプトに埋め込み、JSONフォーマットでの回答を要求します。
+
+        Args:
+            prompt: 元のプロンプト
+            json_schema: JSONスキーマ
+            temperature: 生成の多様性
+
+        Returns:
+            パースされたJSON（辞書形式）
+        """
+        properties = json_schema.get("properties", {})
+        required = json_schema.get("required", [])
+
+        schema_prompt = "以下のJSONスキーマに従って回答してください：\n"
+        schema_prompt += "{\n"
+        for prop_name, prop_info in properties.items():
+            schema_prompt += f'  "{prop_name}": {{\n'
+            schema_prompt += f"    \"type\": \"{prop_info.get('type', 'string')}\",\n"
+            schema_prompt += (
+                f"    \"description\": \"{prop_info.get('description', '')}\"\n"
+            )
+            schema_prompt += "  },\n"
+        schema_prompt += "}\n\n"
+
+        if required:
+            schema_prompt += f"必須フィールド: {', '.join(required)}\n\n"
+
+        schema_prompt += "必ず有効なJSONオブジェクトとして回答してください。"
+
+        enhanced_prompt = f"{prompt}\n\n{schema_prompt}"
+
+        response_text = self._ask_llm(enhanced_prompt, temperature)
+
+        try:
+            json_str = self._extract_json_from_text(response_text)
+            parsed_json = json.loads(json_str)
+            return parsed_json
+        except json.JSONDecodeError as e:
+            print(f"JSON解析エラー: {e}, 回答: {response_text[:100]}...")
+            return {}
+
+    def _extract_json_from_text(self, text: str) -> str:
+        """
+        テキストからJSON部分を抽出します。
+
+        Args:
+            text: 解析するテキスト
+
+        Returns:
+            抽出されたJSON文字列
+        """
+        start_idx = text.find("{")
+        if start_idx == -1:
+            return "{}"
+
+        open_braces = 0
+        for i in range(start_idx, len(text)):
+            if text[i] == "{":
+                open_braces += 1
+            elif text[i] == "}":
+                open_braces -= 1
+                if open_braces == 0:
+                    return text[start_idx : i + 1]
+
+        return "{}"  # 有効なJSONが見つからない場合
 
     def should_search(self, message: str) -> bool:
         """
@@ -514,7 +607,7 @@ class DuckDuckGoSearchAgent(BaseAgent):
                     search_results = self.perform_search(refined_query)
 
             yield "<search_end>"
-            
+
             if search_results:
                 search_info = self.format_search_results(search_results)
                 yield f"{search_info}\n\n回答を生成中...\n\n"
@@ -564,6 +657,9 @@ class DuckDuckGoSearchAgent(BaseAgent):
                 "search_performed": bool(search_results),
                 "search_query": self.state.get("last_search_query"),
                 "search_results": self.state.get("last_search_results"),
+                "structured_output_supported": self.config.get(
+                    "use_structured_output", True
+                ),
             }
 
         except Exception as e:
@@ -639,6 +735,9 @@ class DuckDuckGoSearchAgent(BaseAgent):
                 "search_performed": bool(search_results),
                 "search_query": self.state.get("last_search_query"),
                 "search_results": self.state.get("last_search_results"),
+                "structured_output_supported": self.config.get(
+                    "use_structured_output", True
+                ),
                 "usage": {
                     "prompt_tokens": response.usage.prompt_tokens,
                     "completion_tokens": response.usage.completion_tokens,
