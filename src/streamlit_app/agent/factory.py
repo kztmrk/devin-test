@@ -3,6 +3,7 @@ from typing import Any, Dict, Optional, Type
 from .base.base_agent import BaseAgent
 from .implementations.azure_openai_agent import AzureOpenAIAgent
 from .implementations.context_aware_agent import ContextAwareAgent
+from .implementations.duckduckgo_search_agent import DuckDuckGoSearchAgent
 from .implementations.tool_using_agent import ToolUsingAgent
 
 
@@ -15,6 +16,7 @@ class AgentFactory:
         "azure_openai": AzureOpenAIAgent,
         "context_aware": ContextAwareAgent,
         "tool_using": ToolUsingAgent,
+        "duckduckgo_search": DuckDuckGoSearchAgent,
     }
 
     @classmethod
@@ -63,4 +65,5 @@ class AgentFactory:
             "azure_openai": "Azure OpenAI APIを直接使用する基本エージェント",
             "context_aware": "ドキュメントコンテキストを活用した情報提供エージェント",
             "tool_using": "外部ツール/APIを利用できる拡張エージェント",
+            "duckduckgo_search": "DuckDuckGoを使用して外部情報を検索するエージェント",
         }
