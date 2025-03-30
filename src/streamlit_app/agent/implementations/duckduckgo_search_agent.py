@@ -3,8 +3,42 @@ from typing import Any, Dict, Generator, List, Optional
 
 from duckduckgo_search import DDGS
 from openai import AzureOpenAI
+from pydantic import BaseModel, Field
 
 from ..base.base_agent import BaseAgent
+
+
+class SearchDecision(BaseModel):
+    """検索の必要性を判断するためのモデル"""
+    should_search: bool = Field(description="検索が必要かどうかを示すブール値")
+    reason: str = Field(description="判断の理由")
+
+
+class SearchQuery(BaseModel):
+    """検索クエリを生成するためのモデル"""
+    query: str = Field(description="生成された検索クエリ")
+    keywords: list[str] = Field(description="抽出された主要なキーワード", default_factory=list)
+
+
+class QueryRefinement(BaseModel):
+    """検索クエリを最適化するためのモデル"""
+    should_refine: bool = Field(description="クエリを最適化する必要があるかどうか")
+    refined_query: str = Field(description="最適化されたクエリ（最適化が不要な場合は空文字列）")
+    reason: str = Field(description="最適化の理由または不要と判断した理由")
+
+
+class DateExtraction(BaseModel):
+    """日付情報を抽出するためのモデル"""
+    date_found: bool = Field(description="日付が見つかったかどうか")
+    date: str = Field(description="抽出された日付情報（見つからなかった場合は空文字列）")
+    format: str = Field(description="日付のフォーマット（例：YYYY/MM/DD）", default="")
+
+
+class SourceClassification(BaseModel):
+    """情報ソースを分類するためのモデル"""
+    source_type: str = Field(description="「一次情報」、「二次情報」、または「不明」")
+    confidence: float = Field(description="分類の確信度（0.0-1.0）", ge=0.0, le=1.0)
+    reason: str = Field(description="分類の理由")
 
 
 class DuckDuckGoSearchAgent(BaseAgent):
@@ -90,6 +124,39 @@ class DuckDuckGoSearchAgent(BaseAgent):
         except Exception as e:
             print(f"Error calling Azure OpenAI API: {str(e)}")
             return ""
+            
+    def _ask_llm_with_structured_output(self, prompt: str, json_schema: dict, temperature: float = 0.0) -> dict:
+        """
+        Azure OpenAI APIを使用して構造化出力を返すプロンプトに対する回答を取得します。
+        
+        Args:
+            prompt: 質問やタスクを含むプロンプト
+            json_schema: 返される構造化JSONのスキーマ
+            temperature: 生成の多様性（0.0は決定論的、1.0は創造的）
+            
+        Returns:
+            構造化されたJSONレスポンス（辞書形式）
+        """
+        if not self.client:
+            raise ValueError(
+                "Azure OpenAI client is not initialized. Please check your configuration."
+            )
+            
+        try:
+            messages = [{"role": "user", "content": prompt}]
+            response = self.client.chat.completions.create(
+                model=self.config["deployment_name"],
+                messages=messages,
+                temperature=temperature,
+                response_format={"type": "json_object", "schema": json_schema},
+                stream=False,
+            )
+            
+            import json
+            return json.loads(response.choices[0].message.content)
+        except Exception as e:
+            print(f"Error calling Azure OpenAI API with structured output: {str(e)}")
+            return {}
 
     def should_search(self, message: str) -> bool:
         """
