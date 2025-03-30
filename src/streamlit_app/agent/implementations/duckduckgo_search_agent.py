@@ -380,18 +380,18 @@ class DuckDuckGoSearchAgent(BaseAgent):
         タイトル: {title}
         本文: {body}
         
-        - 日付が見つからない場合は「見つかりません」と回答してください
+        - 日付が見つからない場合は、date_foundをfalseにしてください
         - 複数の日付がある場合は、最も最近のものを選択してください
-        - 日付のフォーマットはそのまま抽出してください（例：2023年3月15日、2023/03/15など）
-        
+        - 日付のフォーマットを指定してください（例：YYYY年MM月DD日、YYYY/MM/DD など）
         """
-
-        date_info = self._ask_llm(prompt).strip()
-
-        if "見つかりません" in date_info or not date_info:
+        
+        schema = DateExtraction.schema()
+        result = self._ask_llm_with_structured_output(prompt, schema)
+        
+        if not result or not result.get("date_found", False):
             return None
-
-        return date_info
+            
+        return result.get("date", None)
 
     def classify_information_source(self, result: Dict[str, str]) -> str:
         """
@@ -427,18 +427,18 @@ class DuckDuckGoSearchAgent(BaseAgent):
         内容: {body[:300]}...
         
         上記の情報ソースを分析し、「一次情報」、「二次情報」、または「不明」に分類してください。
-        理由も簡潔に説明してください。
-        
+        分類の確信度（0.0-1.0）と理由も説明してください。
         """
-
-        classification_result = self._ask_llm(prompt)
-
-        if "一次情報" in classification_result:
-            return "一次情報"
-        elif "二次情報" in classification_result:
-            return "二次情報"
-        else:
+        
+        schema = SourceClassification.schema()
+        result = self._ask_llm_with_structured_output(prompt, schema)
+        
+        if not result:
             return "不明"
+            
+        source_type = result.get("source_type", "不明")
+        
+        return source_type
 
     def format_search_results(self, results: List[Dict[str, str]]) -> str:
         """
