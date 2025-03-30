@@ -1,16 +1,18 @@
 # Devin Test Repository
 
-# Streamlit Azure OpenAI ストリーミングチャットボット
+# Streamlit カスタムLLM Agent ストリーミングチャットボット
 
-このアプリケーションは、StreamlitとAzure OpenAI APIを使用したシンプルなチャットボットで、ストリーミングレスポンスをサポートしています。ローカルPCで実行できます。
+このアプリケーションは、StreamlitとカスタムLLM Agentを介してAzure OpenAI APIを使用するチャットボットで、ストリーミングレスポンスをサポートしています。独自のロジックを持つLLM Agentを通じて高度なチャット機能を提供します。ローカルPCで実行できます。
 
 ## 機能
 
-- Azure OpenAI APIを使用したチャット機能
+- カスタムLLM Agentを介したAzure OpenAI API連携
+- 独自のロジックによるメッセージ処理
 - リアルタイムのストリーミングレスポンス表示
 - 会話履歴の管理
 - デプロイメント名の指定
 - 会話リセット機能
+- 拡張可能なエージェントフレームワーク
 
 ## セットアップ手順
 
