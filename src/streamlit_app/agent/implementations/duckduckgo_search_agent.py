@@ -61,15 +61,45 @@ class DuckDuckGoSearchAgent(BaseAgent):
         self.state["last_search_results"] = None
         self.state["refined_query"] = None
 
-    def should_search(self, message: str) -> bool:
+    def _ask_llm(self, prompt: str, temperature: float = 0.0) -> str:
         """
-        Determine if a search should be performed for the given message.
+        Azure OpenAI APIを使用して単一のプロンプトに対する回答を取得します。
 
         Args:
-            message: The user message to analyze.
+            prompt: 質問やタスクを含むプロンプト
+            temperature: 生成の多様性（0.0は決定論的、1.0は創造的）
 
         Returns:
-            True if a search should be performed, False otherwise.
+            LLMからの回答テキスト
+        """
+        if not self.client:
+            raise ValueError(
+                "Azure OpenAI client is not initialized. Please check your configuration."
+            )
+
+        try:
+            messages = [{"role": "user", "content": prompt}]
+            response = self.client.chat.completions.create(
+                model=self.config["deployment_name"],
+                messages=messages,
+                temperature=temperature,
+                stream=False,
+            )
+
+            return response.choices[0].message.content
+        except Exception as e:
+            print(f"Error calling Azure OpenAI API: {str(e)}")
+            return ""
+
+    def should_search(self, message: str) -> bool:
+        """
+        指定されたメッセージに対して検索を行うべきかどうかを判断します。
+
+        Args:
+            message: 分析するユーザーメッセージ
+
+        Returns:
+            検索を行うべき場合はTrue、そうでない場合はFalse
         """
         if not self.config.get("search_enabled", True):
             return False
@@ -77,65 +107,57 @@ class DuckDuckGoSearchAgent(BaseAgent):
         if message.strip().lower().startswith(("検索:", "search:")):
             return True
 
-        search_indicators = [
-            "最新",
-            "最近",
-            "ニュース",
-            "情報",
-            "データ",
-            "統計",
-            "いつ",
-            "どこ",
-            "誰が",
-            "何が",
-            "どのように",
-            "なぜ",
-            "調べて",
-            "教えて",
-            "知りたい",
-            "わかる？",
-            "分かる？",
-            "latest",
-            "recent",
-            "news",
-            "information",
-            "data",
-            "statistics",
-            "when",
-            "where",
-            "who",
-            "what",
-            "how",
-            "why",
-            "look up",
-            "tell me",
-            "find",
-            "search",
-        ]
+        prompt = f"""
+        あなたはユーザーの質問を分析し、外部情報の検索が必要かどうかを判断するアシスタントです。
+        
+        以下のような場合、外部検索が必要と判断してください：
+        - 最新の情報やニュースを求めている質問
+        - 特定の事実や統計に関する質問
+        - 特定の場所、人物、イベントなどに関する具体的な情報を求める質問
+        - 「調べて」「教えて」などの明示的な情報要求を含む質問
+        
+        以下のような場合は外部検索が不要です：
+        - 一般的な概念や定義に関する質問
+        - 個人的な意見や提案を求める質問
+        - 会話の継続や挨拶
+        
+        「{message}」
+        
+        このユーザーメッセージは外部情報の検索が必要ですか？ 「はい」または「いいえ」で答えてください。
+        """
 
-        for indicator in search_indicators:
-            if indicator in message.lower():
-                return True
-
-        return False
+        response = self._ask_llm(prompt).strip().lower()
+        return "はい" in response or "yes" in response
 
     def generate_search_query(self, message: str) -> str:
         """
-        Generate a search query from the user message.
+        ユーザーメッセージから検索クエリを生成します。
 
         Args:
-            message: The user message to generate a query from.
+            message: クエリを生成するためのユーザーメッセージ
 
         Returns:
-            A search query string.
+            検索クエリ文字列
         """
         if message.strip().lower().startswith(("検索:", "search:")):
             return message.split(":", 1)[1].strip()
 
-        query = message.replace("について教えて", "")
-        query = query.replace("を調べて", "")
-        query = query.replace("は何ですか", "")
-        query = query.replace("とは", "")
+        prompt = f"""
+        あなたは検索エンジンの専門家で、効果的な検索クエリを作成するスキルを持っています。
+        
+        以下のユーザーメッセージを分析し、最も関連性の高い情報を見つけるための最適な検索クエリを生成してください。
+        
+        - 簡潔で具体的なキーワードを使用する
+        - 不要な言葉（「について教えて」など）は省略する
+        - 重要なキーワードだけを含める
+        - 検索エンジンで最良の結果を得られるように最適化する
+        - 日本語のクエリを生成する
+        
+        「{message}」
+        
+        """
+
+        query = self._ask_llm(prompt).strip()
 
         if len(query) > 100:
             query = query[:100]
@@ -205,117 +227,137 @@ class DuckDuckGoSearchAgent(BaseAgent):
         self, original_query: str, results: List[Dict[str, str]]
     ) -> Optional[str]:
         """
-        Refine a search query based on initial search results.
+        初期検索結果に基づいて検索クエリを最適化します。
 
         Args:
-            original_query: The original search query.
-            results: The initial search results.
+            original_query: 元の検索クエリ
+            results: 初期検索結果
 
         Returns:
-            A refined query if refinement is needed, None otherwise.
+            最適化が必要な場合は最適化されたクエリ、そうでない場合はNone
         """
         if not results or len(results) >= self.config.get("max_search_results", 3):
-            return None  # 十分な結果がある場合は洗練不要
+            return None  # 十分な結果がある場合は最適化不要
 
-        if len(results) <= 1:
-            generalized_query = original_query
+        results_summary = "\n".join(
+            [
+                f"タイトル: {result.get('title', '')}\n内容: {result.get('body', '')[:100]}..."
+                for result in results
+            ]
+        )
 
-            import re
+        prompt = f"""
+        あなたは検索クエリ最適化の専門家です。検索結果が少ない場合に、より良い結果を得るためにクエリを改善します。
+        
+        元の検索クエリ: 「{original_query}」
+        検索結果数: {len(results)}件（最大{self.config.get("max_search_results", 3)}件中）
+        
+        {results_summary}
+        
+        より多くの関連情報を得るために、検索クエリを改善してください。以下のいずれかの方法を適用できます：
+        - より一般的な用語を使用する
+        - 別の言い回しを試す
+        - 関連キーワードを追加する
+        - 制限的すぎる修飾語を削除する
+        
+        できるだけ簡潔なクエリを1つだけ提案してください。クエリを変更する必要がない場合は「変更不要」と回答してください。
+        
+        """
 
-            generalized_query = re.sub(r"\b\d{4}年?\b", "", generalized_query)
-            generalized_query = re.sub(r"\b\d{1,2}月\b", "", generalized_query)
+        refined_query = self._ask_llm(prompt).strip()
 
-            for term in ["最新の", "最近の", "詳細な", "具体的な"]:
-                generalized_query = generalized_query.replace(term, "")
-
-            generalized_query = generalized_query.strip()
-
-            if generalized_query != original_query:
-                return generalized_query
-
-        if len(original_query.split()) > 3:
-            keywords = " ".join(original_query.split()[:3])
-            return keywords
+        if (
+            refined_query
+            and "変更不要" not in refined_query
+            and refined_query != original_query
+        ):
+            return refined_query
 
         return None
 
     def extract_date_info(self, result: Dict[str, str]) -> Optional[str]:
         """
-        Extract publication date information from a search result.
+        検索結果から公開日情報を抽出します。
 
         Args:
-            result: The search result to extract date from.
+            result: 日付を抽出する検索結果
 
         Returns:
-            A string representation of the date if found, None otherwise.
+            日付が見つかった場合はその文字列表現、見つからなかった場合はNone
         """
         if "published" in result:
             return result.get("published", None)
 
+        title = result.get("title", "")
         body = result.get("body", "")
-        date_patterns = [
-            r"(\d{4}年\d{1,2}月\d{1,2}日)",  # 2023年3月15日
-            r"(\d{4}/\d{1,2}/\d{1,2})",  # 2023/03/15
-            r"(\d{4}-\d{1,2}-\d{1,2})",  # 2023-03-15
-        ]
 
-        for pattern in date_patterns:
-            import re
+        prompt = f"""
+        あなたは与えられたテキストから日付情報を抽出する専門家です。
+        
+        以下のテキストから公開日または最後の更新日と思われる日付情報を抽出してください。
+        
+        タイトル: {title}
+        本文: {body}
+        
+        - 日付が見つからない場合は「見つかりません」と回答してください
+        - 複数の日付がある場合は、最も最近のものを選択してください
+        - 日付のフォーマットはそのまま抽出してください（例：2023年3月15日、2023/03/15など）
+        
+        """
 
-            match = re.search(pattern, body)
-            if match:
-                return match.group(1)
+        date_info = self._ask_llm(prompt).strip()
 
-        return None
+        if "見つかりません" in date_info or not date_info:
+            return None
+
+        return date_info
 
     def classify_information_source(self, result: Dict[str, str]) -> str:
         """
-        Classify a search result as primary or secondary information.
+        検索結果を一次情報または二次情報として分類します。
 
         Args:
-            result: The search result to classify.
+            result: 分類する検索結果
 
         Returns:
-            Classification as "一次情報", "二次情報", or "不明".
+            "一次情報"、"二次情報"、または"不明"としての分類
         """
-        href = result.get("href", "").lower()
-        title = result.get("title", "").lower()
-        body = result.get("body", "").lower()
+        href = result.get("href", "")
+        title = result.get("title", "")
+        body = result.get("body", "")
 
-        primary_indicators = [
-            ".gov.",
-            ".go.jp",
-            "official",
-            "公式",
-            "オフィシャル",
-            "press release",
-            "プレスリリース",
-            "発表",
-        ]
+        prompt = f"""
+        あなたは情報ソースの分類専門家です。情報を一次情報（直接の情報源）と二次情報（間接的な情報源）に分類します。
+        
+        一次情報（プライマリーソース）:
+        - 政府や公式機関からの直接の発表
+        - 企業や組織の公式ウェブサイトやプレスリリース
+        - 直接の証言や一次資料
+        - 原著論文や研究報告書
+        
+        二次情報（セカンダリーソース）:
+        - ニュースサイトや報道機関による報道
+        - ブログ記事やレビュー
+        - 解説記事や分析
+        - まとめサイトや情報キュレーション
+        
+        URL: {href}
+        タイトル: {title}
+        内容: {body[:300]}...
+        
+        上記の情報ソースを分析し、「一次情報」、「二次情報」、または「不明」に分類してください。
+        理由も簡潔に説明してください。
+        
+        """
 
-        secondary_indicators = [
-            "news",
-            "blog",
-            "review",
-            "opinion",
-            "analysis",
-            "ニュース",
-            "ブログ",
-            "レビュー",
-            "まとめ",
-            "解説",
-            "分析",
-        ]
+        classification_result = self._ask_llm(prompt)
 
-        for indicator in primary_indicators:
-            if indicator in href or indicator in title or indicator in body:
-                return "一次情報"
-
-        for indicator in secondary_indicators:
-            if indicator in href or indicator in title or indicator in body:
-                return "二次情報"
-
-        return "不明"
+        if "一次情報" in classification_result:
+            return "一次情報"
+        elif "二次情報" in classification_result:
+            return "二次情報"
+        else:
+            return "不明"
 
     def format_search_results(self, results: List[Dict[str, str]]) -> str:
         """
