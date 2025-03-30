@@ -224,16 +224,22 @@ class DuckDuckGoSearchAgent(BaseAgent):
         - 重要なキーワードだけを含める
         - 検索エンジンで最良の結果を得られるように最適化する
         - 日本語のクエリを生成する
+        - 主要なキーワードも個別にリストアップしてください
         
-        「{message}」
-        
+        ユーザーメッセージ: 「{message}」
         """
-
-        query = self._ask_llm(prompt).strip()
-
+        
+        schema = SearchQuery.schema()
+        result = self._ask_llm_with_structured_output(prompt, schema)
+        
+        if not result or "query" not in result:
+            return message.strip()
+            
+        query = result.get("query", "").strip()
+        
         if len(query) > 100:
             query = query[:100]
-
+            
         return query.strip()
 
     def perform_search(self, query: str) -> List[Dict[str, str]]:
@@ -326,25 +332,28 @@ class DuckDuckGoSearchAgent(BaseAgent):
         
         {results_summary}
         
-        より多くの関連情報を得るために、検索クエリを改善してください。以下のいずれかの方法を適用できます：
+        より多くの関連情報を得るために、検索クエリを改善すべきかどうか判断し、改善が必要な場合は新しいクエリを提案してください。
+        以下のいずれかの方法を適用できます：
         - より一般的な用語を使用する
         - 別の言い回しを試す
         - 関連キーワードを追加する
         - 制限的すぎる修飾語を削除する
         
-        できるだけ簡潔なクエリを1つだけ提案してください。クエリを変更する必要がない場合は「変更不要」と回答してください。
-        
+        クエリを変更する必要がない場合は、should_refineをfalseにしてください。
         """
-
-        refined_query = self._ask_llm(prompt).strip()
-
-        if (
-            refined_query
-            and "変更不要" not in refined_query
-            and refined_query != original_query
-        ):
+        
+        schema = QueryRefinement.schema()
+        result = self._ask_llm_with_structured_output(prompt, schema)
+        
+        if not result:
+            return None
+            
+        should_refine = result.get("should_refine", False)
+        refined_query = result.get("refined_query", "").strip()
+        
+        if should_refine and refined_query and refined_query != original_query:
             return refined_query
-
+            
         return None
 
     def extract_date_info(self, result: Dict[str, str]) -> Optional[str]:
