@@ -190,11 +190,16 @@ class DuckDuckGoSearchAgent(BaseAgent):
         
         「{message}」
         
-        このユーザーメッセージは外部情報の検索が必要ですか？ 「はい」または「いいえ」で答えてください。
+        このユーザーメッセージは外部情報の検索が必要かどうかを判断し、理由も説明してください。
         """
 
-        response = self._ask_llm(prompt).strip().lower()
-        return "はい" in response or "yes" in response
+        schema = SearchDecision.schema()
+        result = self._ask_llm_with_structured_output(prompt, schema)
+        
+        if not result:
+            return False
+            
+        return result.get("should_search", False)
 
     def generate_search_query(self, message: str) -> str:
         """
