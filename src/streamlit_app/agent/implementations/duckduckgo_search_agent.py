@@ -1,3 +1,4 @@
+import json
 import time
 from typing import Any, Dict, Generator, List, Optional
 
@@ -158,8 +159,6 @@ class DuckDuckGoSearchAgent(BaseAgent):
                 response_format={"type": "json_object", "schema": json_schema},
                 stream=False,
             )
-
-            import json
 
             return json.loads(response.choices[0].message.content)
         except Exception as e:
