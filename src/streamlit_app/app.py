@@ -21,11 +21,44 @@ except ImportError:
         "Warning: python-dotenv not found. Environment variables will not be loaded from .env file."
     )
 
+# テーマモードの状態管理を追加
+if "theme_mode" not in st.session_state:
+    st.session_state.theme_mode = "dark"  # デフォルトはダークモード
+
 st.set_page_config(
     page_title="Azure OpenAI ストリーミングチャットボット",
     page_icon="💬",
     layout="wide",
 )
+
+# カスタムCSSの適用
+def apply_custom_theme():
+    if st.session_state.theme_mode == "dark":
+        st.markdown("""
+        <style>
+        .stApp {
+            background-color: #262730;
+            color: #FAFAFA;
+        }
+        .stTextInput>div>div>input {
+            background-color: #262730;
+            color: #FAFAFA;
+        }
+        .stTextArea>div>div>textarea {
+            background-color: #262730;
+            color: #FAFAFA;
+        }
+        .stButton>button {
+            background-color: #FF4B4B;
+            color: #FAFAFA;
+        }
+        .stButton>button:hover {
+            background-color: #FF6B6B;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+
+apply_custom_theme()
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -61,6 +94,18 @@ if "agent_type" not in st.session_state:
 
 with st.sidebar:
     st.title("設定")
+
+    # テーマ切り替えを追加
+    with st.expander("表示設定"):
+        theme_mode = st.radio(
+            "テーマ",
+            options=["light", "dark"],
+            index=0 if st.session_state.theme_mode == "light" else 1,
+            format_func=lambda x: "ライトモード" if x == "light" else "ダークモード"
+        )
+        if theme_mode != st.session_state.theme_mode:
+            st.session_state.theme_mode = theme_mode
+            st.rerun()
 
     api_key = st.text_input(
         "Azure OpenAI APIキー",
