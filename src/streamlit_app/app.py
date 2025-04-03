@@ -60,10 +60,10 @@ if "agent_type" not in st.session_state:
     st.session_state.agent_type = "azure_openai"
 
 with st.sidebar:
-    st.title("設定")
+    st.title("⚙️ 設定")
 
     api_key = st.text_input(
-        "Azure OpenAI APIキー",
+        "🔑 Azure OpenAI APIキー",
         value=st.session_state.azure_api_key,
         type="password",
         help="Azure OpenAI APIキーを入力してください。環境変数で設定されている場合は自動的に読み込まれます。",
@@ -72,7 +72,7 @@ with st.sidebar:
         st.session_state.azure_api_key = api_key
 
     endpoint = st.text_input(
-        "Azure OpenAIエンドポイント",
+        "🌐 Azure OpenAIエンドポイント",
         value=st.session_state.azure_endpoint,
         help="Azure OpenAIエンドポイントを入力してください。例: https://your-resource-name.openai.azure.com/",
     )
@@ -82,13 +82,13 @@ with st.sidebar:
 
         if not endpoint.startswith("https://") or ".openai.azure.com/" not in endpoint:
             st.warning(
-                "エンドポイントは通常 'https://your-resource-name.openai.azure.com/' の形式です。"
+                "⚠️ エンドポイントは通常 'https://your-resource-name.openai.azure.com/' の形式です。"
             )
 
         st.session_state.azure_endpoint = endpoint
 
     deployment = st.text_input(
-        "デプロイメント名",
+        "🚀 デプロイメント名",
         value=st.session_state.azure_deployment,
         help="Azure OpenAIのデプロイメント名を入力してください。",
     )
@@ -96,39 +96,44 @@ with st.sidebar:
         st.session_state.azure_deployment = deployment
 
     api_version = st.text_input(
-        "APIバージョン",
+        "📝 APIバージョン",
         value=st.session_state.azure_api_version,
         help="Azure OpenAI APIのバージョンを入力してください。",
     )
     if api_version:
         st.session_state.azure_api_version = api_version
 
-    if st.button("会話をリセット"):
+    model = st.selectbox(
+        "🤖 モデル",
+        ["gpt-35-turbo", "gpt-4"],
+        index=0 if st.session_state.openai_model == "gpt-35-turbo" else 1,
+    )
+    st.session_state.openai_model = model
+
+    agent_type = st.selectbox(
+        "🎯 エージェントタイプ",
+        ["azure_openai", "context_aware", "tool_using", "duckduckgo_search"],
+        index=["azure_openai", "context_aware", "tool_using", "duckduckgo_search"].index(
+            st.session_state.agent_type
+        ),
+    )
+    st.session_state.agent_type = agent_type
+
+    debug_mode = st.checkbox(
+        "🔍 デバッグモード",
+        value=st.session_state.debug_mode,
+        help="デバッグ情報を表示します。",
+    )
+    st.session_state.debug_mode = debug_mode
+
+    if st.button("🔄 会話をリセット"):
         st.session_state.messages = []
-        st.success("会話履歴をリセットしました。")
+        st.rerun()
 
     with st.expander("開発者オプション"):
-        debug_mode = st.checkbox("デバッグモード", value=st.session_state.debug_mode)
-        if debug_mode != st.session_state.debug_mode:
-            st.session_state.debug_mode = debug_mode
-            st.rerun()
-
         available_agents = st.session_state.agent_manager.get_available_agents()
         agent_options = list(available_agents.keys())
         agent_descriptions = list(available_agents.values())
-
-        agent_type = st.selectbox(
-            "エージェントタイプ",
-            options=agent_options,
-            format_func=lambda x: f"{x} - {available_agents[x]}",
-            index=agent_options.index(st.session_state.agent_type)
-            if st.session_state.agent_type in agent_options
-            else 0,
-        )
-
-        if agent_type != st.session_state.agent_type:
-            st.session_state.agent_type = agent_type
-            st.rerun()
 
         if st.session_state.agent_type == "duckduckgo_search":
             st.subheader("検索設定")
@@ -185,9 +190,13 @@ st.title("Azure OpenAI ストリーミングチャットボット")
 
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
+        if message["role"] == "user":
+            st.markdown("👤 **ユーザー**")
+        else:
+            st.markdown("🤖 **アシスタント**")
         st.markdown(message["content"])
 
-if prompt := st.chat_input("メッセージを入力してください"):
+if prompt := st.chat_input("💭 メッセージを入力してください"):
     if (
         not st.session_state.azure_api_key
         or not st.session_state.azure_endpoint
@@ -199,9 +208,11 @@ if prompt := st.chat_input("メッセージを入力してください"):
     st.session_state.messages.append({"role": "user", "content": prompt})
 
     with st.chat_message("user"):
+        st.markdown("👤 **ユーザー**")
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
+        st.markdown("🤖 **アシスタント**")
         message_placeholder = st.empty()
         full_response = ""
 
