@@ -130,13 +130,13 @@ with st.sidebar:
         st.session_state.messages = []
         st.rerun()
 
-    with st.expander("開発者オプション"):
+    with st.expander("🔧 開発者オプション"):
         available_agents = st.session_state.agent_manager.get_available_agents()
         agent_options = list(available_agents.keys())
         agent_descriptions = list(available_agents.values())
 
         if st.session_state.agent_type == "duckduckgo_search":
-            st.subheader("検索設定")
+            st.subheader("🔎 検索設定")
 
             if "search_enabled" not in st.session_state:
                 st.session_state.search_enabled = True
@@ -148,13 +148,13 @@ with st.sidebar:
                 st.session_state.search_region = "jp-ja"
 
             search_enabled = st.checkbox(
-                "検索機能を有効にする", value=st.session_state.search_enabled
+                "🔍 検索機能を有効にする", value=st.session_state.search_enabled
             )
             if search_enabled != st.session_state.search_enabled:
                 st.session_state.search_enabled = search_enabled
 
             max_results = st.slider(
-                "最大検索結果数",
+                "📊 最大検索結果数",
                 min_value=1,
                 max_value=10,
                 value=st.session_state.max_search_results,
@@ -163,13 +163,13 @@ with st.sidebar:
                 st.session_state.max_search_results = max_results
 
             news_search = st.checkbox(
-                "ニュース検索を有効にする", value=st.session_state.get("news_search", True)
+                "📰 ニュース検索を有効にする", value=st.session_state.get("news_search", True)
             )
             if news_search != st.session_state.get("news_search", True):
                 st.session_state.news_search = news_search
 
             max_refinements = st.slider(
-                "検索クエリ最適化回数",
+                "🔄 検索クエリ最適化回数",
                 min_value=0,
                 max_value=2,
                 value=st.session_state.get("max_query_refinements", 1),
@@ -178,7 +178,7 @@ with st.sidebar:
                 st.session_state.max_query_refinements = max_refinements
 
             use_structured_output = st.checkbox(
-                "構造化出力を使用する（一部のモデルでは非対応）",
+                "📝 構造化出力を使用する（一部のモデルでは非対応）",
                 value=st.session_state.get("use_structured_output", True),
             )
             if use_structured_output != st.session_state.get(
@@ -301,20 +301,20 @@ if prompt := st.chat_input("💭 メッセージを入力してください"):
             st.error(f"エラーが発生しました: {error_msg}")
 
             if "authentication" in error_msg.lower() or "401" in error_msg:
-                st.warning("認証エラーが発生しました。以下を確認してください：")
+                st.warning("🔐 認証エラーが発生しました。以下を確認してください：")
                 st.warning("1. APIキーが正しいことを確認してください")
                 st.warning(
                     "2. エンドポイントURLが正しいことを確認してください（https://your-resource-name.openai.azure.com/）"
                 )
                 st.warning("3. デプロイメント名が正しいことを確認してください")
             elif "not found" in error_msg.lower() or "404" in error_msg:
-                st.warning("リソースが見つかりませんでした。デプロイメント名が正しいことを確認してください")
+                st.warning("❌ リソースが見つかりませんでした。デプロイメント名が正しいことを確認してください")
             elif "index" in error_msg.lower() and "range" in error_msg.lower():
-                st.warning("API応答の処理中にエラーが発生しました。APIバージョンに互換性の問題がある可能性があります。")
+                st.warning("⚠️ API応答の処理中にエラーが発生しました。APIバージョンに互換性の問題がある可能性があります。")
                 st.warning(f"現在のAPIバージョン: {st.session_state.azure_api_version}")
                 st.warning("推奨APIバージョン: 2023-05-15")
             elif "agent" in error_msg.lower():
-                st.warning("エージェント関連のエラーが発生しました。以下を確認してください：")
+                st.warning("🤖 エージェント関連のエラーが発生しました。以下を確認してください：")
                 st.warning(
                     f"1. 選択したエージェントタイプ ({st.session_state.agent_type}) が正しいことを確認してください"
                 )
@@ -328,4 +328,4 @@ if prompt := st.chat_input("💭 メッセージを入力してください"):
         )
 
 st.markdown("---")
-st.markdown("このアプリケーションはStreamlitとAzure OpenAI APIを使用しています。APIキーは安全に管理してください。")
+st.markdown("💡 このアプリケーションはStreamlitとAzure OpenAI APIを使用しています。APIキーは安全に管理してください。")
